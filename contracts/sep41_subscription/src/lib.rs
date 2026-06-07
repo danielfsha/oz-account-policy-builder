@@ -1,98 +1,204 @@
-//! SEP-41 subscription policy — generated example by OZ Policy Builder.
+//! # SEP-41 Subscription Policy
 //!
-//! ⚠  REVIEW BEFORE DEPLOYING. Never deploy automatically.
+//! Implements [`stellar_accounts::policies::Policy`] to allow a delegated
+//! billing service to collect a fixed recurring payment from a smart account
+//! once per billing period.
 //!
-//! Allows a delegated service to collect a fixed recurring payment of
-//! up to 10 USDC per month from the user's smart account.
+//! ## Invariants enforced
+//! - At most one `transfer` call per `period_ledgers` window.
+//! - The `amount` of each transfer must be <= `subscription_amount`.
+//! - The `to` address must match the `recipient` set at install time.
+//!
+//! ## SEP-41 token transfer signature
+//! ```text
+//! transfer(from: Address, to: Address, amount: i128)
+//! ```
+//!
+//! ## ⚠  REVIEW BEFORE DEPLOYING — deployment is never automatic.
 
 #![no_std]
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, Symbol};
+
+use soroban_sdk::{
+    auth::Context, contract, contractimpl, contracttype, symbol_short, Address, Env, Val, Vec,
+};
+use stellar_accounts::{
+    policies::Policy,
+    smart_account::{ContextRule, Signer},
+};
+
+// ── TTL ───────────────────────────────────────────────────────────────────────
+const TTL_THRESHOLD: u32 = 518_400;  // ~30 days
+const EXTEND_AMOUNT: u32 = 2_592_000; // ~150 days
+
+// ── Storage keys ──────────────────────────────────────────────────────────────
+#[contracttype]
+#[derive(Clone)]
+enum StorageKey {
+    Params(Address, u32),
+    State(Address, u32),
+}
+
+// ── Data types ────────────────────────────────────────────────────────────────
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sep41SubscriptionParams {
+    /// Authorised recipient of subscription payments.
+    pub recipient: Address,
+    /// Max amount per payment (raw SEP-41 token units, typically 7 decimals).
+    pub subscription_amount: i128,
+    /// Minimum ledgers between payments. 518_400 ≈ 30 days.
+    pub period_ledgers: u32,
+}
 
 #[contracttype]
 #[derive(Clone)]
-pub enum DataKey {
-    SubState(Address, Symbol),
+struct SubscriptionState {
+    /// Ledger sequence of the last successful payment; 0 = never paid.
+    last_payment_ledger: u32,
 }
 
-#[contracttype]
-#[derive(Clone)]
-pub struct SubState {
-    pub paid_this_period: i128,
-    pub period_start_ledger: u32,
-}
-
-#[contracterror]
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum PolicyError {
-    SubscriptionLimitExceeded = 1,
-    NotInstalled = 2,
-}
-
-/// 10 USDC per month (7 decimals)
-const SUBSCRIPTION_CAP: i128 = 100_000_000;
-/// 30 days in ledgers (2_592_000 s / 5 s per ledger)
-const PERIOD_LEDGERS: u32 = 518_400;
-
+// ── Contract ──────────────────────────────────────────────────────────────────
 #[contract]
 pub struct Sep41SubscriptionPolicy;
 
-#[contractimpl]
-impl Sep41SubscriptionPolicy {
-    pub fn install(env: Env, account: Address, context_rule_id: Symbol) {
-        account.require_auth();
-        env.storage().persistent().set(
-            &DataKey::SubState(account, context_rule_id),
-            &SubState { paid_this_period: 0, period_start_ledger: env.ledger().sequence() },
+impl Policy for Sep41SubscriptionPolicy {
+    type AccountParams = Sep41SubscriptionParams;
+
+    fn enforce(
+        e: &Env,
+        context: Context,
+        _authenticated_signers: Vec<Signer>,
+        context_rule: ContextRule,
+        smart_account: Address,
+    ) {
+        smart_account.require_auth();
+
+        let params_key = StorageKey::Params(smart_account.clone(), context_rule.id);
+        let state_key = StorageKey::State(smart_account.clone(), context_rule.id);
+
+        let params: Sep41SubscriptionParams = e
+            .storage()
+            .persistent()
+            .get(&params_key)
+            .unwrap_or_else(|| panic!("Sep41SubscriptionPolicy: not installed"));
+
+        // Only apply to transfer calls
+        let (to, amount) = match extract_transfer_args(&context) {
+            Some(v) => v,
+            None => return,
+        };
+
+        // ── Recipient check ───────────────────────────────────────────────
+        if to != params.recipient {
+            panic!(
+                "Sep41SubscriptionPolicy: recipient mismatch \
+                 (expected={:?}, got={:?})",
+                params.recipient, to
+            );
+        }
+
+        // ── Amount check ──────────────────────────────────────────────────
+        if amount > params.subscription_amount {
+            panic!(
+                "Sep41SubscriptionPolicy: amount exceeds subscription ({} > {})",
+                amount, params.subscription_amount
+            );
+        }
+
+        // ── Period check (at most once per period) ────────────────────────
+        let mut state: SubscriptionState = e
+            .storage()
+            .persistent()
+            .get(&state_key)
+            .unwrap_or(SubscriptionState { last_payment_ledger: 0 });
+
+        let cur = e.ledger().sequence();
+        if state.last_payment_ledger > 0 {
+            let elapsed = cur.saturating_sub(state.last_payment_ledger);
+            if elapsed < params.period_ledgers {
+                panic!(
+                    "Sep41SubscriptionPolicy: payment too soon \
+                     (elapsed={} ledgers, period={})",
+                    elapsed, params.period_ledgers
+                );
+            }
+        }
+
+        state.last_payment_ledger = cur;
+        e.storage().persistent().set(&state_key, &state);
+        e.storage()
+            .persistent()
+            .extend_ttl(&state_key, TTL_THRESHOLD, EXTEND_AMOUNT);
+    }
+
+    fn install(
+        e: &Env,
+        install_params: Sep41SubscriptionParams,
+        context_rule: ContextRule,
+        smart_account: Address,
+    ) {
+        smart_account.require_auth();
+        assert!(install_params.subscription_amount > 0, "subscription_amount must be > 0");
+        assert!(install_params.period_ledgers > 0, "period_ledgers must be > 0");
+
+        let params_key = StorageKey::Params(smart_account.clone(), context_rule.id);
+        let state_key = StorageKey::State(smart_account.clone(), context_rule.id);
+
+        e.storage().persistent().set(&params_key, &install_params);
+        e.storage()
+            .persistent()
+            .extend_ttl(&params_key, TTL_THRESHOLD, EXTEND_AMOUNT);
+
+        let state = SubscriptionState { last_payment_ledger: 0 };
+        e.storage().persistent().set(&state_key, &state);
+        e.storage()
+            .persistent()
+            .extend_ttl(&state_key, TTL_THRESHOLD, EXTEND_AMOUNT);
+
+        e.events().publish(
+            (symbol_short!("installed"),),
+            (
+                smart_account,
+                context_rule.id,
+                install_params.recipient,
+                install_params.subscription_amount,
+            ),
         );
     }
 
-    pub fn can_enforce(
-        env: Env,
-        account: Address,
-        context_rule_id: Symbol,
-        _contract: Address,
-        _function: Symbol,
-    ) -> Result<(), PolicyError> {
-        env.storage()
-            .persistent()
-            .get::<_, SubState>(&DataKey::SubState(account, context_rule_id))
-            .map(|_| ())
-            .ok_or(PolicyError::NotInstalled)
-    }
+    fn uninstall(e: &Env, context_rule: ContextRule, smart_account: Address) {
+        smart_account.require_auth();
 
-    pub fn enforce(
-        env: Env,
-        account: Address,
-        context_rule_id: Symbol,
-        _contract: Address,
-        _function: Symbol,
-        amount: i128,
-    ) -> Result<(), PolicyError> {
-        let key = DataKey::SubState(account.clone(), context_rule_id);
-        let mut state: SubState = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .ok_or(PolicyError::NotInstalled)?;
+        let params_key = StorageKey::Params(smart_account.clone(), context_rule.id);
+        let state_key = StorageKey::State(smart_account.clone(), context_rule.id);
 
-        let cur = env.ledger().sequence();
-        if cur.saturating_sub(state.period_start_ledger) >= PERIOD_LEDGERS {
-            state.paid_this_period = 0;
-            state.period_start_ledger = cur;
+        if !e.storage().persistent().has(&params_key) {
+            panic!("Sep41SubscriptionPolicy: not installed");
         }
 
-        state.paid_this_period = state.paid_this_period.saturating_add(amount);
-        if state.paid_this_period > SUBSCRIPTION_CAP {
-            return Err(PolicyError::SubscriptionLimitExceeded);
-        }
-        env.storage().persistent().set(&key, &state);
-        Ok(())
-    }
+        e.storage().persistent().remove(&params_key);
+        e.storage().persistent().remove(&state_key);
 
-    pub fn uninstall(env: Env, account: Address, context_rule_id: Symbol) {
-        env.storage()
-            .persistent()
-            .remove(&DataKey::SubState(account, context_rule_id));
+        e.events().publish(
+            (symbol_short!("uninstalled"),),
+            (smart_account, context_rule.id),
+        );
+    }
+}
+
+#[contractimpl]
+impl Sep41SubscriptionPolicy {}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Extract `(to, amount)` from a SEP-41 `transfer(from, to, amount)` context.
+fn extract_transfer_args(context: &Context) -> Option<(Address, i128)> {
+    match context {
+        Context::Contract(ctx) if ctx.fn_name == symbol_short!("transfer") => {
+            let to: Address = ctx.args.get(1).and_then(|v| Address::try_from(v).ok())?;
+            let amount: i128 = ctx.args.get(2).and_then(|v| i128::try_from(v).ok())?;
+            Some((to, amount))
+        }
+        _ => None,
     }
 }

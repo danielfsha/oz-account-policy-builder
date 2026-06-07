@@ -2,14 +2,18 @@
 name = "soroswap-bounded-swap"
 version = "0.1.0"
 edition = "2021"
-description = "Soroswap bounded swap policy — slippage guard example"
+description = "Soroswap bounded swap policy — slippage + daily volume cap"
 license = "MIT"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { workspace = true }
+soroban-sdk      = { workspace = true }
+stellar-accounts = { workspace = true }
 
 [dev-dependencies]
-soroban-sdk = { workspace = true }
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[features]
+testutils = ["soroban-sdk/testutils"]
