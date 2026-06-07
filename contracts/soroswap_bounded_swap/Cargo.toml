@@ -1,0 +1,15 @@
+[package]
+name = "soroswap-bounded-swap"
+version = "0.1.0"
+edition = "2021"
+description = "Soroswap bounded swap policy — slippage guard example"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true }

@@ -1,0 +1,25 @@
+[package]
+name = "oz-policy-core"
+version = "0.1.0"
+edition = "2021"
+description = "OZ Policy Builder — Soroban transaction analyzer and policy synthesizer"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+stellar-xdr = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true }
+proptest = { workspace = true }
+
+[features]
+testutils = ["soroban-sdk/testutils"]

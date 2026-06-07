@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/core",
+    "contracts/blend_yield_claim",
+    "contracts/soroswap_bounded_swap",
+    "contracts/sep41_subscription",
+]
+
+[workspace.dependencies]
+soroban-sdk     = { version = "=22.0.0", features = ["testutils"] }
+stellar-xdr     = { version = "=22.1.0", features = ["curr"] }
+stellar-accounts = { version = "=0.7.1" }
+serde           = { version = "=1.0.228", features = ["derive"] }
+serde_json      = "=1.0.150"
+thiserror       = "=1.0.69"
+hex             = "=0.4.3"
+base64          = "=0.22.1"
+proptest        = "=1.4.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = false
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

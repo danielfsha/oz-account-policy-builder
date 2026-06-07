@@ -1,0 +1,15 @@
+[package]
+name = "sep41-subscription"
+version = "0.1.0"
+edition = "2021"
+description = "SEP-41 subscription policy — recurring payment example"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true }
