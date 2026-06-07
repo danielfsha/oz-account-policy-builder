@@ -1,126 +1,95 @@
 import { z } from "zod";
-import type { AuthRequest, OAuthHelpers, ClientInfo } from "@cloudflare/workers-oauth-provider";
 
-// User context passed through OAuth
-export type Props = {
-  login: string;
-  name: string;
-  email: string;
-  accessToken: string;
-};
+// ── MCP response types ────────────────────────────────────────────────────────
 
-// Extended environment with OAuth provider
-export type ExtendedEnv = Env & { OAUTH_PROVIDER: OAuthHelpers };
-
-// OAuth URL construction parameters
-export interface UpstreamAuthorizeParams {
-  upstream_url: string;
-  client_id: string;
-  scope: string;
-  redirect_uri: string;
-  state?: string;
-}
-
-// OAuth token exchange parameters
-export interface UpstreamTokenParams {
-  code: string | undefined;
-  upstream_url: string;
-  client_secret: string;
-  redirect_uri: string;
-  client_id: string;
-}
-
-// Approval dialog configuration
-export interface ApprovalDialogOptions {
-  client: ClientInfo | null;
-  server: {
-    name: string;
-    logo?: string;
-    description?: string;
-  };
-  state: Record<string, any>;
-  cookieName?: string;
-  cookieSecret?: string | Uint8Array;
-  cookieDomain?: string;
-  cookiePath?: string;
-  cookieMaxAge?: number;
-}
-
-// Result of parsing approval form
-export interface ParsedApprovalResult {
-  state: any;
-  headers: Record<string, string>;
-}
-
-// MCP tool schemas using Zod
-export const ListTablesSchema = {};
-
-export const QueryDatabaseSchema = {
-  sql: z
-    .string()
-    .min(1, "SQL query cannot be empty")
-    .describe("SQL query to execute (SELECT queries only)"),
-};
-
-export const ExecuteDatabaseSchema = {
-  sql: z
-    .string()
-    .min(1, "SQL command cannot be empty")
-    .describe("SQL command to execute (INSERT, UPDATE, DELETE, CREATE, etc.)"),
-};
-
-// MCP response types
 export interface McpTextContent {
   type: "text";
   text: string;
   isError?: boolean;
+  [key: string]: unknown;
 }
 
 export interface McpResponse {
   content: McpTextContent[];
+  [key: string]: unknown;
 }
 
-// Standard response creators
 export function createSuccessResponse(message: string, data?: any): McpResponse {
-  let text = `**Success**\n\n${message}`;
+  let text = `✅ **${message}**`;
   if (data !== undefined) {
-    text += `\n\n**Result:**\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
+    text += `\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
   }
-  return {
-    content: [{
-      type: "text",
-      text,
-    }],
-  };
+  return { content: [{ type: "text", text }] };
 }
 
 export function createErrorResponse(message: string, details?: any): McpResponse {
-  let text = `**Error**\n\n${message}`;
+  let text = `❌ **Error:** ${message}`;
   if (details !== undefined) {
-    text += `\n\n**Details:**\n\`\`\`json\n${JSON.stringify(details, null, 2)}\n\`\`\``;
+    text += `\n\n\`\`\`json\n${JSON.stringify(details, null, 2)}\n\`\`\``;
   }
-  return {
-    content: [{
-      type: "text",
-      text,
-      isError: true,
-    }],
-  };
+  return { content: [{ type: "text", text, isError: true }] };
 }
 
-// Database operation result type
-export interface DatabaseOperationResult<T = any> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  duration?: number;
-}
+// ── Tool input schemas ────────────────────────────────────────────────────────
 
-// SQL validation result
-export interface SqlValidationResult {
-  isValid: boolean;
-  error?: string;
-}
+export const RecordTransactionSchema = {
+  tx_hash: z.string().min(1).describe(
+    "Stellar transaction hash (64 hex chars). Or pass a JSON CallManifest directly as a string for testing."
+  ),
+  network: z.enum(["mainnet", "testnet", "futurenet"]).default("testnet").describe(
+    "Stellar network"
+  ),
+  invoking_account: z.string().optional().describe(
+    "Override the invoking account G-address (useful for simulations)"
+  ),
+};
 
-// Re-export external types that are used throughout
-export type { AuthRequest, OAuthHelpers, ClientInfo };
+export const SynthesizePolicySchema = {
+  manifest_json: z.string().min(1).describe(
+    "JSON-encoded CallManifest from record_transaction"
+  ),
+  amount_cap: z.string().optional().describe(
+    "Override spending cap as raw u128 string (e.g. '1000000000' = 100 USDC at 7 decimals)"
+  ),
+  time_window_seconds: z.number().positive().optional().describe(
+    "Override time window: 86400=daily, 604800=weekly, 2592000=monthly"
+  ),
+  lifetime_seconds: z.number().positive().optional().describe(
+    "Context rule lifetime in seconds (default: 31536000 = 1 year)"
+  ),
+  max_slippage_percent: z.number().min(0).max(100).optional().describe(
+    "For swap transactions: max allowed slippage % (e.g. 5.0)"
+  ),
+};
+
+export const EmitPolicySchema = {
+  spec_json: z.string().min(1).describe(
+    "JSON-encoded PolicySpec from synthesize_policy"
+  ),
+  output_dir: z.string().optional().describe(
+    "Output directory prefix (default: 'generated')"
+  ),
+};
+
+export const RunHarnessSchema = {
+  spec_json: z.string().min(1).describe(
+    "JSON-encoded PolicySpec from synthesize_policy"
+  ),
+  manifest_json: z.string().min(1).describe(
+    "JSON-encoded CallManifest from record_transaction"
+  ),
+};
+
+export const ListPrimitivesSchema = {};
+
+export const AnswerClarificationSchema = {
+  spec_json: z.string().min(1).describe(
+    "JSON-encoded PolicySpec with pending clarifications"
+  ),
+  field: z.string().min(1).describe(
+    "The clarification field to answer (e.g. 'amount_cap', 'time_window_seconds')"
+  ),
+  answer: z.string().min(1).describe(
+    "The answer or value (e.g. '100000000' for amount_cap)"
+  ),
+};

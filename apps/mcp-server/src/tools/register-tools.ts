@@ -1,14 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Props } from "../types";
-import { registerDatabaseTools } from "./database-tools";
+import { registerPolicyTools } from "./policy-tools";
 
-/**
- * Register all MCP tools based on user permissions
- */
-export function registerAllTools(server: McpServer, env: Env, props: Props) {
-	// Register database tools
-	registerDatabaseTools(server, env, props);
-	
-	// Future tools can be registered here
-	// registerOtherTools(server, env, props);
+export function registerAllTools(server: McpServer, env: Env, props: Record<string, never>) {
+  registerPolicyTools(server, env, props);
 }
