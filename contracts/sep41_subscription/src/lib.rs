@@ -187,7 +187,27 @@ impl Policy for Sep41SubscriptionPolicy {
 }
 
 #[contractimpl]
-impl Sep41SubscriptionPolicy {}
+impl Sep41SubscriptionPolicy {
+    /// Query current spend state for a (smart_account, context_rule_id) pair.
+    /// Returns `(last_payment_ledger, subscription_amount, period_ledgers)`.
+    pub fn get_state(
+        e: Env,
+        smart_account: Address,
+        context_rule_id: u32,
+    ) -> (u32, i128, u32) {
+        let params: Sep41SubscriptionParams = e
+            .storage()
+            .persistent()
+            .get(&StorageKey::Params(smart_account.clone(), context_rule_id))
+            .unwrap_or_else(|| panic!("Sep41SubscriptionPolicy: not installed"));
+        let state: SubscriptionState = e
+            .storage()
+            .persistent()
+            .get(&StorageKey::State(smart_account, context_rule_id))
+            .unwrap_or(SubscriptionState { last_payment_ledger: 0 });
+        (state.last_payment_ledger, params.subscription_amount, params.period_ledgers)
+    }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
