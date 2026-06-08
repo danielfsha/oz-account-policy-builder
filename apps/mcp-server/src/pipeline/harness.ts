@@ -197,14 +197,14 @@ function buildReport(
     "═══════════════════════════════════════",
     " OZ Policy Builder — Harness Report",
     "═══════════════════════════════════════",
-    `PERMIT: ${permit.passed ? "✅ PASS" : "❌ FAIL"} — ${permit.details}`,
+    `PERMIT: ${permit.passed ? "PASS" : "FAIL"} — ${permit.details}`,
     "",
     "DENY CASES:",
     ...denyResults.map(
       (r) => `  ${r.passed ? "✅" : "❌"} [${r.case_name}] ${r.mutation} — ${r.details}`
     ),
     "",
-    `OVERALL: ${passed ? "✅ ALL CASES PASSED — safe to emit policy code" : "❌ HARNESS FAILED — re-synthesize with tighter constraints"}`,
+    `OVERALL: ${passed ? "ALL CASES PASSED — safe to emit policy code" : "HARNESS FAILED — re-synthesize with tighter constraints"}`,
   ];
   return lines.join("\n");
 }

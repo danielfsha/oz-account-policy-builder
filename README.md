@@ -1,159 +1,63 @@
-# Turborepo starter
+# OZ Policy Builder MCP Server
 
-This Turborepo starter is maintained by the Turborepo core team.
+Cloudflare Workers MCP server exposing the OZ Policy Builder pipeline to AI agents.
 
-## Using this example
+## Tools
 
-Run the following command:
+| Tool | Description |
+|------|-------------|
+| `record_transaction` | Fetch a Stellar tx from Horizon → CallManifest |
+| `synthesize_policy` | CallManifest → PolicySpec (context rule + policy layers) |
+| `answer_clarification` | Resolve pending clarification questions in a PolicySpec |
+| `run_harness` | Permit + 5 deny-case simulation tests |
+| `emit_policy_crate` | PolicySpec → reviewable Rust crate files |
+| `list_primitives` | List OZ policy primitives available |
 
-```sh
-npx create-turbo@latest
+## Local dev
+
+```bash
+npm install
+npm run dev          # starts on http://localhost:8792
 ```
 
-## What's inside?
+## Connect to Claude Desktop
 
-This Turborepo includes the following packages/apps:
+Add to `claude_desktop_config.json`:
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```json
+{
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:8792/mcp"]
+    }
+  }
+}
 ```
 
-Without global `turbo`, use your package manager:
+Then restart Claude Desktop. You'll see the 6 tools available.
 
-```sh
-cd my-turborepo
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+## Connect to Cursor / other MCP clients
+
+MCP endpoint: `http://localhost:8792/mcp` (SSE also available at `/sse`)
+
+## Deploy to Cloudflare
+
+```bash
+npm run deploy
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+No secrets required for the policy builder itself.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Workflow example
 
-```sh
-turbo build --filter=docs
 ```
+User: I want to delegate yield claiming on Blend to an AI agent, max 100 USDC/week.
 
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+Claude:
+1. record_transaction("abc123...", "mainnet")
+2. synthesize_policy(manifest_json, amount_cap="1000000000", time_window_seconds=604800)
+3. answer_clarification(spec_json, field="contract_lock", answer="Lock to exact address")
+4. run_harness(spec_json, manifest_json)  → all 5 deny cases pass ✅
+5. emit_policy_crate(spec_json)  → Rust crate + REVIEW.md
 ```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
