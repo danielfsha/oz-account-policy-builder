@@ -43,7 +43,9 @@ export async function fetchTransactionFromHorizon(
   const data: any = await res.json();
 
   if (!data.successful) {
-    throw new Error(`Transaction ${txHash} failed on-chain — cannot record a failed transaction`);
+    throw new Error(
+      `Transaction ${txHash} failed on-chain (network: ${network}) — cannot extract a CallManifest from a failed transaction`
+    );
   }
 
   return {

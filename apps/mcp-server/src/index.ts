@@ -7,9 +7,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
-import { registerAllTools } from "./tools/register-tools";
-
-type Props = Record<string, never>;
+import { registerAllTools, type Props } from "./tools/register-tools";
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({

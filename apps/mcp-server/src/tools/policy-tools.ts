@@ -34,7 +34,7 @@ import {
   applyConstraintOverride,
 } from "../pipeline";
 
-export function registerPolicyTools(server: McpServer, _env: Env, _props: Record<string, never>) {
+export function registerPolicyTools(server: McpServer, _env: Env, _props: import("./register-tools").Props) {
   // ── 1. record_transaction ──────────────────────────────────────────────────
   server.tool(
     "record_transaction",
@@ -56,6 +56,21 @@ Use this as the first step in the record → synthesize → emit workflow.`,
           { manifest }
         );
       } catch (err: any) {
+        // Detect failed-on-chain transactions and provide actionable guidance
+        if (err.message?.includes("failed on-chain")) {
+          return createErrorResponse(
+            `Transaction ${args.tx_hash} failed on-chain (network: ${args.network})`,
+            {
+              message: err.message,
+              reason: "The record_transaction tool only works with successfully executed transactions. A CallManifest cannot be extracted from a failed transaction because the contract calls never actually executed.",
+              suggestions: [
+                "Double-check the hash — make sure it's the correct transaction hash and network (mainnet vs. testnet).",
+                `Try ${args.network === "mainnet" ? "testnet" : "mainnet"} — if this transaction exists on a different network, retry with the correct one.`,
+                "Use a successful transaction — the OZ policy builder requires a transaction that was successfully applied on-chain.",
+              ],
+            }
+          );
+        }
         return createErrorResponse("Failed to record transaction", { message: err.message });
       }
     }

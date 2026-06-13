@@ -5,10 +5,10 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Val, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, auth::Context, symbol_short, Address, Env, Symbol, Val, Vec};
 use stellar_accounts::{
     policies::Policy,
-    smart_account::{ContextRule, Signer},
+    smart_account::{ContextRule, ContextRuleType, Signer},
 };
 use policy_primitives::{PolicyError, PolicyResult, PolicyStorage, ValidateParams};
 
@@ -55,66 +55,115 @@ pub struct SpendingState {
 #[contract]
 pub struct SpendingLimitPolicy;
 
-#[contractimpl]
-impl SpendingLimitPolicy {
-    /// Install the policy for a specific smart account and context rule
-    pub fn install(env: Env, account: Address, context_rule_id: u32, params: InstallParams) -> PolicyResult<()> {
-        params.validate()?;
+impl Policy for SpendingLimitPolicy {
+    type AccountParams = InstallParams;
+
+    fn enforce(
+        e: &Env,
+        context: soroban_sdk::auth::Context,
+        _authenticated_signers: Vec<Signer>,
+        context_rule: ContextRule,
+        smart_account: Address,
+    ) {
+        smart_account.require_auth();
+        
+        // Get parameters
+        let params_key = Symbol::new(e, "params");
+        let params: InstallParams = match PolicyStorage::get(e, &smart_account, context_rule.id, params_key.clone()) {
+            Some(params) => params,
+            None => panic!("SpendingLimitPolicy: not installed"),
+        };
+        
+        // Get current state
+        let state_key = Symbol::new(e, "state");
+        let mut state: SpendingState = match PolicyStorage::get(e, &smart_account, context_rule.id, state_key.clone()) {
+            Some(state) => state,
+            None => SpendingState {
+                spent_amount: 0,
+                window_start: e.ledger().sequence(),
+            },
+        };
+        
+        // Check if window has expired
+        let current_ledger = e.ledger().sequence();
+        if current_ledger.saturating_sub(state.window_start) >= params.window_ledgers {
+            state.spent_amount = 0;
+            state.window_start = current_ledger;
+        }
+        
+        // Extract transfer amount from context (simplified)
+        let amount = extract_transfer_amount(&context);
+        if amount > 0 {
+            state.spent_amount = state.spent_amount.saturating_add(amount);
+            if state.spent_amount > params.cap_amount {
+                panic!("SpendingLimitPolicy: spending limit exceeded ({} > {})", state.spent_amount, params.cap_amount);
+            }
+            
+            // Save updated state
+            PolicyStorage::set(e, &smart_account, context_rule.id, state_key, &state);
+        }
+    }
+
+    fn install(e: &Env, install_params: InstallParams, context_rule: ContextRule, smart_account: Address) {
+        smart_account.require_auth();
+        install_params.validate().unwrap_or_else(|_| panic!("SpendingLimitPolicy: invalid parameters"));
         
         // Store parameters
-        PolicyStorage::set(&env, &account, context_rule_id, "params", &params);
+        let params_key = Symbol::new(e, "params");
+        PolicyStorage::set(e, &smart_account, context_rule.id, params_key.clone(), &install_params);
         
         // Initialize state
+        let state_key = Symbol::new(e, "state");
         let state = SpendingState {
             spent_amount: 0,
-            window_start: env.ledger().sequence(),
+            window_start: e.ledger().sequence(),
         };
-        PolicyStorage::set(&env, &account, context_rule_id, "state", &state);
+        PolicyStorage::set(e, &smart_account, context_rule.id, state_key.clone(), &state);
         
-        Ok(())
+        e.events().publish((Symbol::new(e, "installed"),), (smart_account, context_rule.id));
     }
 
-    /// Uninstall the policy (remove all state)
-    pub fn uninstall(env: Env, account: Address, context_rule_id: u32) -> PolicyResult<()> {
-        PolicyStorage::set(&env, &account, context_rule_id, "params", &());
-        PolicyStorage::set(&env, &account, context_rule_id, "state", &());
-        Ok(())
-    }
-
-    /// Get current spending state
-    pub fn get_state(env: Env, account: Address, context_rule_id: u32) -> PolicyResult<SpendingState> {
-        match PolicyStorage::get(&env, &account, context_rule_id, "state") {
-            Some(state) => Ok(state),
-            None => Err(PolicyError::NotFound),
+    fn uninstall(e: &Env, context_rule: ContextRule, smart_account: Address) {
+        smart_account.require_auth();
+        
+        // Check if installed
+        let params_key = Symbol::new(e, "params");
+        if !PolicyStorage::has(e, &smart_account, context_rule.id, params_key.clone()) {
+            panic!("SpendingLimitPolicy: not installed");
         }
-    }
-
-    /// Get installation parameters
-    pub fn get_params(env: Env, account: Address, context_rule_id: u32) -> PolicyResult<InstallParams> {
-        match PolicyStorage::get(&env, &account, context_rule_id, "params") {
-            Some(params) => Ok(params),
-            None => Err(PolicyError::NotFound),
-        }
+        
+        // Clear storage
+        let state_key = Symbol::new(e, "state");
+        PolicyStorage::set(e, &smart_account, context_rule.id, params_key, &());
+        PolicyStorage::set(e, &smart_account, context_rule.id, state_key.clone(), &());
+        
+        e.events().publish((Symbol::new(e, "uninstalled"),), (smart_account, context_rule.id));
     }
 }
 
-#[contractimpl]
-impl Policy for SpendingLimitPolicy {
-    fn enforce(
-        &self,
-        env: Env,
-        _rule: ContextRule,
-        _signer: Signer,
-        _context: Vec<Context>,
-        _auth_context: Val,
-    ) -> Result<(), stellar_accounts::policies::PolicyError> {
-        // This is a placeholder - actual enforcement would be more complex
-        // and would check the spending amount against the cap
-        Ok(())
+impl SpendingLimitPolicy {
+    /// Get current spending state (helper function)
+    pub fn get_state(e: &Env, smart_account: Address, context_rule_id: u32) -> Option<SpendingState> {
+        let state_key = Symbol::new(e, "state");
+        PolicyStorage::get(e, &smart_account, context_rule_id, state_key.clone())
     }
 
-    fn weight(&self) -> u32 {
-        10 // Standard weight for spending limit policies
+    /// Get installation parameters (helper function)
+    pub fn get_params(e: &Env, smart_account: Address, context_rule_id: u32) -> Option<InstallParams> {
+        let params_key = Symbol::new(e, "params");
+        PolicyStorage::get(e, &smart_account, context_rule_id, params_key.clone())
+    }
+}
+
+/// Helper to extract transfer amount from context
+fn extract_transfer_amount(context: &soroban_sdk::auth::Context) -> u64 {
+    match context {
+        soroban_sdk::auth::Context::Contract(ctx) => {
+            // Simplified - check if function is transfer
+            // In reality, would compare with symbol and extract amount from args
+            0
+        }
+        _ => 0,
     }
 }
 
@@ -126,90 +175,152 @@ mod test {
     use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
     #[test]
-    fn test_install_and_uninstall() {
+    fn test_install_and_get() {
         let env = Env::default();
         let account = Address::generate(&env);
-        let context_rule_id = 123;
+        let contract_addr = Address::generate(&env);
         
-        let policy = SpendingLimitPolicy;
-        
-        // Install with valid params
-        let params = InstallParams {
-            cap_amount: 1000,
-            asset_id: Address::generate(&env),
-            window_ledgers: 1000,
-            allow_partial: true,
-        };
-        
-        let result = policy.install(env.clone(), account.clone(), context_rule_id, params.clone());
-        assert!(result.is_ok());
-        
-        // Verify params stored
-        let stored_params = policy.get_params(env.clone(), account.clone(), context_rule_id).unwrap();
-        assert_eq!(stored_params.cap_amount, params.cap_amount);
-        assert_eq!(stored_params.asset_id, params.asset_id);
-        
-        // Verify state initialized
-        let state = policy.get_state(env.clone(), account.clone(), context_rule_id).unwrap();
-        assert_eq!(state.spent_amount, 0);
-        assert_eq!(state.window_start, env.ledger().sequence());
-        
-        // Uninstall
-        let result = policy.uninstall(env.clone(), account.clone(), context_rule_id);
-        assert!(result.is_ok());
-        
-        // Verify state cleaned up
-        let result = policy.get_state(env.clone(), account.clone(), context_rule_id);
-        assert!(matches!(result, Err(PolicyError::NotFound)));
+        env.as_contract(&contract_addr, || {
+            // Create minimal context rule for testing
+            let context_rule = ContextRule {
+                id: 123,
+                // Required fields with dummy values
+                context_type: stellar_accounts::smart_account::ContextRuleType::Contract,
+                name: String::from_str(&env, "test_rule"),
+                signers: Vec::new(&env),
+                signer_ids: Vec::new(&env),
+                policies: Vec::new(&env),
+                policy_ids: Vec::new(&env),
+                valid_until: 0,
+            };
+            
+            // Install with valid params
+            let params = InstallParams {
+                cap_amount: 1000,
+                asset_id: Address::generate(&env),
+                window_ledgers: 1000,
+                allow_partial: true,
+            };
+            
+            // Test install
+            SpendingLimitPolicy::install(&env, params.clone(), context_rule.clone(), account.clone());
+            
+            // Verify params stored via helper function
+            let stored_params = SpendingLimitPolicy::get_params(&env, account.clone(), context_rule.id);
+            assert!(stored_params.is_some());
+            let stored_params = stored_params.unwrap();
+            assert_eq!(stored_params.cap_amount, params.cap_amount);
+            assert_eq!(stored_params.asset_id, params.asset_id);
+            
+            // Verify state initialized via helper function
+            let state = SpendingLimitPolicy::get_state(&env, account.clone(), context_rule.id);
+            assert!(state.is_some());
+            let state = state.unwrap();
+            assert_eq!(state.spent_amount, 0);
+            assert_eq!(state.window_start, env.ledger().sequence());
+        });
     }
     
     #[test]
-    fn test_install_validation() {
+    #[should_panic(expected = "invalid parameters")]
+    fn test_install_validation_zero_cap() {
         let env = Env::default();
         let account = Address::generate(&env);
-        let context_rule_id = 123;
+        let contract_addr = Address::generate(&env);
         
-        let policy = SpendingLimitPolicy;
-        
-        // Test with zero cap amount
-        let params = InstallParams {
-            cap_amount: 0,
-            asset_id: Address::generate(&env),
-            window_ledgers: 1000,
-            allow_partial: true,
-        };
-        
-        let result = policy.install(env.clone(), account.clone(), context_rule_id, params);
-        assert!(matches!(result, Err(PolicyError::InvalidParams)));
-        
-        // Test with zero window
-        let params = InstallParams {
-            cap_amount: 1000,
-            asset_id: Address::generate(&env),
-            window_ledgers: 0,
-            allow_partial: true,
-        };
-        
-        let result = policy.install(env.clone(), account.clone(), context_rule_id, params);
-        assert!(matches!(result, Err(PolicyError::InvalidParams)));
+        env.as_contract(&contract_addr, || {
+            let context_rule = ContextRule {
+                id: 123,
+                context_type: symbol_short!("contract"),
+                name: symbol_short!("test_rule"),
+                signers: Vec::new(&env),
+                signer_ids: Vec::new(&env),
+                policies: Vec::new(&env),
+                contract_address: Some(Address::generate(&env)),
+                function_selector: Some(symbol_short!("transfer")),
+            };
+            
+            // Test with zero cap amount (should panic)
+            let params = InstallParams {
+                cap_amount: 0,
+                asset_id: Address::generate(&env),
+                window_ledgers: 1000,
+                allow_partial: true,
+            };
+            
+            SpendingLimitPolicy::install(&env, params, context_rule, account);
+        });
     }
     
     #[test]
-    fn test_policy_trait_implementation() {
+    #[should_panic(expected = "invalid parameters")]
+    fn test_install_validation_zero_window() {
         let env = Env::default();
-        let policy = SpendingLimitPolicy;
+        let account = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
         
-        // Test weight
-        assert_eq!(policy.weight(), 10);
+        env.as_contract(&contract_addr, || {
+            let context_rule = ContextRule {
+                id: 123,
+                context_type: symbol_short!("contract"),
+                name: symbol_short!("test_rule"),
+                signers: Vec::new(&env),
+                signer_ids: Vec::new(&env),
+                policies: Vec::new(&env),
+                contract_address: Some(Address::generate(&env)),
+                function_selector: Some(symbol_short!("transfer")),
+            };
+            
+            // Test with zero window (should panic)
+            let params = InstallParams {
+                cap_amount: 1000,
+                asset_id: Address::generate(&env),
+                window_ledgers: 0,
+                allow_partial: true,
+            };
+            
+            SpendingLimitPolicy::install(&env, params, context_rule, account);
+        });
+    }
+    
+    #[test]
+    fn test_uninstall() {
+        let env = Env::default();
+        let account = Address::generate(&env);
+        let contract_addr = Address::generate(&env);
         
-        // Test enforce (placeholder implementation)
-        let result = policy.enforce(
-            env,
-            ContextRule::default(),
-            Signer::default(),
-            Vec::new(&Env::default()),
-            Val::default(),
-        );
-        assert!(result.is_ok());
+        env.as_contract(&contract_addr, || {
+            let context_rule = ContextRule {
+                id: 123,
+                context_type: symbol_short!("contract"),
+                name: symbol_short!("test_rule"),
+                signers: Vec::new(&env),
+                signer_ids: Vec::new(&env),
+                policies: Vec::new(&env),
+                contract_address: Some(Address::generate(&env)),
+                function_selector: Some(symbol_short!("transfer")),
+            };
+            
+            // Install first
+            let params = InstallParams {
+                cap_amount: 1000,
+                asset_id: Address::generate(&env),
+                window_ledgers: 1000,
+                allow_partial: true,
+            };
+            
+            SpendingLimitPolicy::install(&env, params, context_rule.clone(), account.clone());
+            
+            // Verify installed
+            let state_before = SpendingLimitPolicy::get_state(&env, account.clone(), context_rule.id);
+            assert!(state_before.is_some());
+            
+            // Uninstall
+            SpendingLimitPolicy::uninstall(&env, context_rule.clone(), account.clone());
+            
+            // Verify cleaned up via helper function
+            let state_after = SpendingLimitPolicy::get_state(&env, account.clone(), context_rule.id);
+            assert!(state_after.is_none());
+        });
     }
 }

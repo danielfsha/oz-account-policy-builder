@@ -41,6 +41,12 @@ pub enum PolicyError {
 /// Result type for policy operations
 pub type PolicyResult<T> = core::result::Result<T, PolicyError>;
 
+impl From<soroban_sdk::Error> for PolicyError {
+    fn from(_: soroban_sdk::Error) -> Self {
+        PolicyError::StorageError
+    }
+}
+
 /// Trait for policy parameter validation
 pub trait ValidateParams {
     /// Validate installation parameters

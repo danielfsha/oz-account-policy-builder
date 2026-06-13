@@ -45,7 +45,7 @@ function handleError(error: unknown): { content: Array<{ type: "text"; text: str
 }
 
 export function registerDatabaseToolsWithSentry(server: McpServer, env: Env, props: Props) {
-	// Tool 1: List Tables - Available to all authenticated users
+	// Tool 1: List Tables - Available to all users (authenticated or anonymous)
 	server.tool(
 		"listTables",
 		"Get a list of all tables in the database along with their column information. Use this first to understand the database structure before querying.",
@@ -56,14 +56,16 @@ export function registerDatabaseToolsWithSentry(server: McpServer, env: Env, pro
 					name: "mcp.tool/listTables",
 					attributes: {
 						'mcp.tool.name': 'listTables',
-						'mcp.user.login': props.login,
+						'mcp.user.login': props.login || 'anonymous',
 					},
 				}, async (span) => {
-					// Set user context
-					Sentry.setUser({
-						username: props.login,
-						email: props.email,
-					});
+					// Set user context if available
+					if (props.login && props.email) {
+						Sentry.setUser({
+							username: props.login,
+							email: props.email,
+						});
+					}
 
 					try {
 						return await withDatabase((env as any).DATABASE_URL, async (db) => {
@@ -120,10 +122,10 @@ export function registerDatabaseToolsWithSentry(server: McpServer, env: Env, pro
 		}
 	);
 
-	// Tool 2: Query Database - Available to all authenticated users (read-only)
+	// Tool 2: Query Database - Available to all users (read-only)
 	server.tool(
 		"queryDatabase",
-		"Execute a read-only SQL query against the PostgreSQL database. This tool only allows SELECT statements and other read operations. All authenticated users can use this tool.",
+		"Execute a read-only SQL query against the PostgreSQL database. This tool only allows SELECT statements and other read operations. All users can use this tool.",
 		QueryDatabaseSchema,
 		async ({ sql }) => {
 			return await Sentry.startNewTrace(async () => {
@@ -131,15 +133,17 @@ export function registerDatabaseToolsWithSentry(server: McpServer, env: Env, pro
 					name: "mcp.tool/queryDatabase",
 					attributes: {
 						'mcp.tool.name': 'queryDatabase',
-						'mcp.user.login': props.login,
+						'mcp.user.login': props.login || 'anonymous',
 						'mcp.sql.query': sql.substring(0, 100), // Truncate for security
 					},
 				}, async (span) => {
-					// Set user context
-					Sentry.setUser({
-						username: props.login,
-						email: props.email,
-					});
+					// Set user context if available
+					if (props.login && props.email) {
+						Sentry.setUser({
+							username: props.login,
+							email: props.email,
+						});
+					}
 
 					try {
 						// Validate the SQL query
@@ -178,7 +182,7 @@ export function registerDatabaseToolsWithSentry(server: McpServer, env: Env, pro
 	);
 
 	// Tool 3: Execute Database - Only available to privileged users (write operations)
-	if (ALLOWED_USERNAMES.has(props.login)) {
+	if (props.login && ALLOWED_USERNAMES.has(props.login)) {
 		server.tool(
 			"executeDatabase",
 			"Execute any SQL statement against the PostgreSQL database, including INSERT, UPDATE, DELETE, and DDL operations. This tool is restricted to specific GitHub users and can perform write transactions. **USE WITH CAUTION** - this can modify or delete data.",
