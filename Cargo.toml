@@ -1,26 +1,27 @@
 [workspace]
 resolver = "2"
 members = [
-    "packages/core",
+    "contracts/core",
     "contracts/policy-primitives",
     "contracts/policies/spending-limit",
     "contracts/policies/time-window",
     "contracts/policies/frequency-limit",
     "contracts/policies/allowlist",
     "contracts/policies/composite",
-    "contracts/protocol-adapters/blend",
-    "contracts/protocol-adapters/soroswap",
-    "contracts/protocol-adapters/sep41",
+    # Temporarily disabled due to dependency issues
+    # "contracts/protocol-adapters/blend",
+    # "contracts/protocol-adapters/soroswap",
+    # "contracts/protocol-adapters/sep41",
     "contracts/simulation-harness",
 ]
 
 [workspace.dependencies]
-# Soroban SDK — pinned to match stellar-accounts 0.7.1
-soroban-sdk      = { version = "22.0.11" }
-stellar-xdr      = { version = "22.1.0", features = ["curr"] }
+# Soroban SDK — latest stable version
+soroban-sdk      = { version = "26.1.0" }
+stellar-xdr      = { version = "27.0.0" }
 
 # OZ accounts framework — the Policy trait lives here
-stellar-accounts = { version = "0.7.1" }
+stellar-accounts = { version = "0.7.2" }
 
 # Policy primitives base crate
 policy-primitives = { path = "contracts/policy-primitives" }
