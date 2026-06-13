@@ -5,7 +5,7 @@
 
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Val, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Val, Vec};
 use stellar_accounts::{
     policies::Policy,
     smart_account::{ContextRule, Signer},
