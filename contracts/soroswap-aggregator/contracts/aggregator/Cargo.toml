@@ -1,0 +1,23 @@
+[package]
+name = "soroswap-aggregator"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+description = "Soroswap-Aggregator is a DeFi smart contract designed for the Soroban platform, enabling optimized cross-DEX trading by aggregating liquidity sources. It offers users the best trade execution paths across multiple decentralized exchanges with minimal slippage and optimized gas costs"
+homepage = { workspace = true }
+repository = { workspace = true }
+authors = ["coderipper <joaquin@paltalabs.io>, esteblock"]
+readme = "README.md"
+keywords = ["no_std", "wasm", "soroswap", "amm", "soroban"]
+publish = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+adapter-interface = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+test-utils = { workspace = true, features = ["testutils"] }
