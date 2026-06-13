@@ -1,0 +1,467 @@
+Directory structure:
+└── blend-capital-blend-contract-sdk/
+    ├── README.md
+    ├── Cargo.toml
+    ├── LICENSE
+    ├── src/
+    │   ├── lib.rs
+    │   └── testutils.rs
+    ├── wasm/
+    │   ├── backstop.wasm
+    │   ├── comet.wasm
+    │   ├── comet_factory.wasm
+    │   ├── emitter.wasm
+    │   └── pool_factory.wasm
+    └── .github/
+        └── workflows/
+            ├── cargo_publish.yml
+            └── pull_request.yml
+
+================================================
+FILE: README.md
+================================================
+# Blend Contract SDK
+
+This repository contains interfaces, clients, and WASM blobs for the Blend Protocol as implemented in the [Blend Contracts](https://github.com/blend-capital/blend-contracts) repository.
+
+## Documentation
+
+To learn more about the Blend Protocol, visit the the docs:
+* [Blend Docs](https://docs.blend.capital/)
+
+## Versioning
+
+The Blend Contract SDK uses a modified versioning system to control what version of the Stellar protocol the package supports.
+
+`[blend-protocol-version].[stellar-protocol-version].[sdk-version]`
+
+IE - `1.22.0` is the first version of the contract-sdk with v1 Blend Contracts and the protocol 22 Soroban SDK.
+
+## Modules
+
+The Blend Contract SDK generates modules from the `contractimport` [Soroban SDK macro](). Each module exposes a Client, WASM, and the respective types needed to interact with the Blend Protocol. The following Blend contracts are exposed as a module:
+
+* `backstop` - Contract import for the backstop contract
+* `emitter`- Contract import for the emitter contract
+* `pool` - Contract import for the pool contract
+* `pool_factory` - Contract import for the pool factory contract
+
+## Testing (testutils)
+
+### External Dependencies
+
+The Blend Contract SDK includes `contractimport`'s of the [Comet Contracts](https://github.com/CometDEX/comet-contracts) when compiled for test purposes via the `testutils` feature.
+
+This includes:
+* `comet` - Contract import for the comet pool contract
+* `comet_factory` - Contract import for the comet pool factory contract
+
+NOTE: These contracts were used for testing the Blend Protocol and should not be considered to be the latest version of the Comet Protocol. Please verify any non-test usage of the Comet contracts against the [Comet GitHub](https://github.com/CometDEX/comet-contracts).
+
+### Setup
+
+The `testutils` module allows for easy deployment of Blend Contracts to be used in a unit test. The following example shows how to use the `testutils` to deploy a set of Blend Contracts and set up a pool.
+
+If you require using the pool, please look at the following [sep-41-oracle]() crate to deploy a mock oracle contract: 
+
+```rust
+use soroban_sdk::{symbol_short, testutils::{Address as _, BytesN as _}, Address, BytesN, Env};
+
+use blend_contract_sdk::{pool, testutils::{default_reserve_config, BlendFixture}};
+
+let env = Env::default();
+let deployer = Address::generate(&env);
+let blnd = env.register_stellar_asset_contract_v2(deployer.clone()).address();
+let usdc = env.register_stellar_asset_contract_v2(deployer.clone()).address();
+let blend = BlendFixture::deploy(&env, &deployer, &blnd, &usdc);
+
+let token = env.register_stellar_asset_contract_v2(deployer.clone()).address();
+let pool = blend.pool_factory.mock_all_auths().deploy(
+    &deployer,
+    &symbol_short!("test"),
+    &BytesN::<32>::random(&env),
+    &Address::generate(&env),
+    &0_1000000, // 10%
+    &4, // 4 max positions
+);
+let pool_client = pool::Client::new(&env, &pool);
+let reserve_config = default_reserve_config();
+pool_client.mock_all_auths().queue_set_reserve(&token, &reserve_config);
+pool_client.mock_all_auths().set_reserve(&token);
+
+blend.backstop.mock_all_auths().deposit(&deployer, &pool, &50_000_0000000);
+pool_client.mock_all_auths().set_status(&3); // remove pool from setup status
+pool_client.mock_all_auths().update_status(); // update status based on backstop
+```
+
+## WASM Verification
+
+The WASM files included will align with the GitHub release the SDK was published with (the version numbers will match).
+
+The WASMs are generated with the [Stellar Expert WASM Release Action](https://github.com/stellar-expert/soroban-build-workflow) as part of [Blend Protocol Releases](https://github.com/blend-capital/blend-contracts/releases)
+
+The SHA256 Checksums:
+* backstop - `62f61b32fff99f7eec052a8e573c367759f161c481a5caf0e76a10ae4617c3b4`
+* emitter - `438a5528cff17ede6fe515f095c43c5f15727af17d006971485e52462e7e7b89`
+* pool_factory - `0287f4ad7350935b83d94e046c0bcabc960b233dbce1531008c021b71d406a1d`
+* pool - `baf978f10efdbcd85747868bef8832845ea6809f7643b67a4ac0cd669327fc2c`
+
+
+================================================
+FILE: Cargo.toml
+================================================
+[package]
+name = "blend-contract-sdk"
+version = "2.25.0"
+description = "Traits, clients, types, and WASMs for the Blend Protocol for use in Soroban contract development."
+homepage = "https://github.com/blend-capital/blend-contract-sdk"
+repository = "https://github.com/blend-capital/blend-contract-sdk"
+license = "MIT"
+edition = "2021"
+readme = "README.md"
+keywords = ["no_std", "wasm", "soroban"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[features]
+testutils = [
+    "soroban-sdk/testutils",
+]
+
+[dependencies]
+soroban-sdk = { version = "25.0.1" }
+
+[dev-dependencies]
+soroban-sdk = { version = "25.0.1", features = ["testutils"] }
+
+
+================================================
+FILE: LICENSE
+================================================
+MIT License
+
+Copyright (c) 2025 Blend
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================
+FILE: src/lib.rs
+================================================
+#![no_std]
+
+pub mod backstop {
+    soroban_sdk::contractimport!(file = "./wasm/backstop.wasm");
+}
+pub mod emitter {
+    soroban_sdk::contractimport!(file = "./wasm/emitter.wasm");
+}
+pub mod pool_factory {
+    soroban_sdk::contractimport!(file = "./wasm/pool_factory.wasm");
+}
+pub mod pool {
+    soroban_sdk::contractimport!(file = "./wasm/pool.wasm");
+}
+
+#[cfg(any(test, feature = "testutils"))]
+pub mod testutils;
+
+
+
+================================================
+FILE: src/testutils.rs
+================================================
+use soroban_sdk::{testutils::Address as _, token::StellarAssetClient, vec, Address, Env, Vec};
+
+use crate::{backstop, emitter, pool, pool_factory};
+
+pub mod comet {
+    soroban_sdk::contractimport!(file = "./wasm/comet.wasm");
+}
+
+/// Create a "good enough" ReserveConfig for most testing usecases
+///
+/// Can be used when creating reserves for a pool.
+pub fn default_reserve_config() -> pool::ReserveConfig {
+    pool::ReserveConfig {
+        decimals: 7,
+        c_factor: 0_7500000,
+        l_factor: 0_7500000,
+        util: 0_7500000,
+        max_util: 0_9500000,
+        r_base: 0_0100000,
+        r_one: 0_0500000,
+        r_two: 0_5000000,
+        r_three: 1_5000000,
+        reactivity: 0_0000020, // 2e-6
+        index: 0,
+        supply_cap: 100_000_000_0000000,
+        enabled: true,
+    }
+}
+
+/// Fixture for deploying and interacting with the Blend Protocol contracts in Rust tests.
+pub struct BlendFixture<'a> {
+    pub backstop: backstop::Client<'a>,
+    pub emitter: emitter::Client<'a>,
+    pub backstop_token: comet::Client<'a>,
+    pub pool_factory: pool_factory::Client<'a>,
+}
+
+impl<'a> BlendFixture<'a> {
+    /// Deploy a new set of Blend Protocol contracts. Mints 200k backstop
+    /// tokens to the deployer that can be used in the future to create up to 4
+    /// reward zone pools (50k tokens each).
+    ///
+    /// This function also resets the env budget via `reset_unlimited`.
+    ///
+    /// ### Arguments
+    /// * `env` - The environment to deploy the contracts in
+    /// * `deployer` - The address of the deployer
+    /// * `blnd` - The address of the BLND token
+    /// * `usdc` - The address of the USDC token
+    pub fn deploy(
+        env: &Env,
+        deployer: &Address,
+        blnd: &Address,
+        usdc: &Address,
+    ) -> BlendFixture<'a> {
+        env.cost_estimate().budget().reset_unlimited();
+        let emitter = env.register(emitter::WASM, ());
+        let backstop = Address::generate(&env);
+        let pool_factory = Address::generate(&env);
+        let comet = env.register(comet::WASM, ());
+        let blnd_client = StellarAssetClient::new(env, &blnd);
+        let usdc_client = StellarAssetClient::new(env, &usdc);
+        blnd_client
+            .mock_all_auths()
+            .mint(deployer, &(1_000_0000000 * 2001));
+        usdc_client
+            .mock_all_auths()
+            .mint(deployer, &(25_0000000 * 2001));
+
+        let comet_client: comet::Client<'a> = comet::Client::new(env, &comet);
+        comet_client.mock_all_auths().init(
+            &deployer,
+            &vec![env, blnd.clone(), usdc.clone()],
+            &vec![env, 0_8000000, 0_2000000],
+            &vec![env, 1_000_0000000, 25_0000000],
+            &0_0030000,
+        );
+
+        comet_client.mock_all_auths().join_pool(
+            &199_900_0000000, // finalize mints 100
+            &vec![env, 1_000_0000000 * 2000, 25_0000000 * 2000],
+            deployer,
+        );
+
+        blnd_client.mock_all_auths().set_admin(&emitter);
+        let emitter_client: emitter::Client<'a> = emitter::Client::new(env, &emitter);
+        emitter_client
+            .mock_all_auths()
+            .initialize(&blnd, &backstop, &comet);
+
+        env.register_at(
+            &backstop,
+            backstop::WASM,
+            (
+                comet,
+                emitter,
+                blnd,
+                usdc,
+                pool_factory.clone(),
+                Vec::<(Address, i128)>::new(&env),
+            ),
+        );
+        let backstop_client: backstop::Client<'a> = backstop::Client::new(env, &backstop);
+
+        let pool_hash = env.deployer().upload_contract_wasm(pool::WASM);
+
+        env.register_at(
+            &pool_factory,
+            pool_factory::WASM,
+            (pool_factory::PoolInitMeta {
+                backstop,
+                blnd_id: blnd.clone(),
+                pool_hash,
+            },),
+        );
+        let pool_factory_client = pool_factory::Client::new(env, &pool_factory);
+
+        env.cost_estimate().budget().reset_default();
+
+        BlendFixture {
+            backstop: backstop_client,
+            emitter: emitter_client,
+            backstop_token: comet_client,
+            pool_factory: pool_factory_client,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use soroban_sdk::{
+        testutils::{Address as _, BytesN as _},
+        Address, BytesN, Env, String,
+    };
+
+    use crate::{
+        pool,
+        testutils::{default_reserve_config, BlendFixture},
+    };
+
+    #[test]
+    fn test_deploy() {
+        let env = Env::default();
+        let deployer = Address::generate(&env);
+        let blnd = env
+            .register_stellar_asset_contract_v2(deployer.clone())
+            .address();
+        let usdc = env
+            .register_stellar_asset_contract_v2(deployer.clone())
+            .address();
+        let blend = BlendFixture::deploy(&env, &deployer, &blnd, &usdc);
+        assert_eq!(blend.backstop_token.balance(&deployer), 200_000_0000000);
+
+        // deploy a pool, verify adding reserves, and backstop reward zone
+        let token = env
+            .register_stellar_asset_contract_v2(deployer.clone())
+            .address();
+        let pool = blend.pool_factory.mock_all_auths().deploy(
+            &deployer,
+            &String::from_str(&env, "test"),
+            &BytesN::<32>::random(&env),
+            &Address::generate(&env),
+            &0_1000000, // 10% take rate
+            &4,         // 4 max positions
+            &1_0000000, // $1 min collateral needed to borrow assuming oracle reports $ and is 7 decimals
+        );
+        let pool_client = pool::Client::new(&env, &pool);
+        let reserve_config = default_reserve_config();
+        pool_client
+            .mock_all_auths()
+            .queue_set_reserve(&token, &reserve_config);
+        pool_client.mock_all_auths().set_reserve(&token);
+
+        blend
+            .backstop
+            .mock_all_auths()
+            .deposit(&deployer, &pool, &50_000_0000000);
+        pool_client.mock_all_auths().set_status(&3); // remove pool from setup status
+        pool_client.mock_all_auths().update_status();
+
+        assert_eq!(pool_client.update_status(), 1); // pool is active
+        assert!(blend.pool_factory.is_pool(&pool)); // pool factory knows about the pool
+    }
+}
+
+
+
+================================================
+FILE: wasm/backstop.wasm
+================================================
+[Binary file]
+
+
+================================================
+FILE: wasm/comet.wasm
+================================================
+[Binary file]
+
+
+================================================
+FILE: wasm/comet_factory.wasm
+================================================
+[Binary file]
+
+
+================================================
+FILE: wasm/emitter.wasm
+================================================
+[Binary file]
+
+
+================================================
+FILE: wasm/pool_factory.wasm
+================================================
+[Binary file]
+
+
+================================================
+FILE: .github/workflows/cargo_publish.yml
+================================================
+name: Cargo Publish
+
+on:
+  release:
+    types: [published]
+
+jobs:
+
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update
+    - run: cargo publish -p blend-contract-sdk
+      env:
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+
+================================================
+FILE: .github/workflows/pull_request.yml
+================================================
+name: pull_request
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+
+  complete:
+    if: always()
+    needs: [fmt, build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+    - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      run: exit 1
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update
+    - run: cargo fmt --all --check
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - run: rustup update
+    - run: cargo build
+    - run: cargo test --all
+
