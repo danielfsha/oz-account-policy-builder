@@ -1,0 +1,18 @@
+[package]
+name = "soroswap-adapter"
+version = "0.1.0"
+edition = "2021"
+description = "Soroswap protocol adapter for policy contracts"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+# Note: soroswap-core is in ../soroswap-core directory
+soroswap-core = { path = "../../soroswap-core/contracts" }
+
+[dev-dependencies]
+soroban-sdk = { version = "=22.0.0", features = ["testutils"] }

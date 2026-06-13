@@ -2,6 +2,16 @@
 resolver = "2"
 members = [
     "packages/core",
+    "contracts/policy-primitives",
+    "contracts/policies/spending-limit",
+    "contracts/policies/time-window",
+    "contracts/policies/frequency-limit",
+    "contracts/policies/allowlist",
+    "contracts/policies/composite",
+    "contracts/protocol-adapters/blend",
+    "contracts/protocol-adapters/soroswap",
+    "contracts/protocol-adapters/sep41",
+    "contracts/simulation-harness",
 ]
 
 [workspace.dependencies]
@@ -11,6 +21,9 @@ stellar-xdr      = { version = "22.1.0", features = ["curr"] }
 
 # OZ accounts framework — the Policy trait lives here
 stellar-accounts = { version = "0.7.1" }
+
+# Policy primitives base crate
+policy-primitives = { path = "contracts/policy-primitives" }
 
 # Core library deps
 serde            = { version = "1.0", features = ["derive"] }

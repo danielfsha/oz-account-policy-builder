@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "oz-policy-builder": {
+      "command": "npx",
+      "args": ["tsx", "apps/mcp-server/src/stdio.ts"],
+      "cwd": "C:\\Users\\ROG\\Desktop\\oz-account-policy-builder",
+      "autoApprove": [
+        "list_primitives",
+        "synthesize_policy",
+        "run_harness",
+        "emit_policy_crate",
+        "answer_clarification"
+      ]
+    }
+  }
+}

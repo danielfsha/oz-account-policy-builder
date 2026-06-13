@@ -1,0 +1,18 @@
+[package]
+name = "simulation-harness"
+version = "0.1.0"
+edition = "2021"
+description = "On-chain permit/deny test harness for policy contracts"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+stellar-accounts = { workspace = true }
+policy-primitives = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { version = "=22.0.0", features = ["testutils"] }
+stellar-accounts = { workspace = true }
