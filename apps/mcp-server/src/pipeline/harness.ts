@@ -29,15 +29,15 @@ export function runHarness(spec: PolicySpec, manifest: CallManifest): HarnessRep
   const mutations: Array<{ name: string; description: string; fn: (m: CallManifest) => CallManifest }> = [
     {
       name: "amount_exceeded",
-      description: "Same tx, amount × 2 — should exceed spending limit",
+      description: "Same tx, amount × 3 — should exceed spending limit",
       fn: (m) => {
         const copy = deepClone(m);
         copy.asset_flows = copy.asset_flows.map((f) => ({
           ...f,
-          amount_raw: (BigInt(f.amount_raw) * 2n).toString(),
-          amount_display: `[2× ${f.amount_display}]`,
+          amount_raw: (BigInt(f.amount_raw) * 3n).toString(),
+          amount_display: `[3× ${f.amount_display}]`,
         }));
-        copy.summary = `[MUTATION:amount×2] ${copy.summary}`;
+        copy.summary = `[MUTATION:amount×3] ${copy.summary}`;
         return copy;
       },
     },
@@ -154,8 +154,20 @@ function evaluatePolicy(
     if (layer.kind === "spending_limit") {
       const cap = BigInt(layer.params.cap_amount_raw ?? "0");
       const assetId = layer.params.asset_id ?? "";
-      const totalOut = manifest.asset_flows
-        .filter((f) => f.direction === "outbound")
+
+      // Check all outbound flows — any outbound to an unknown asset is denied
+      const outboundFlows = manifest.asset_flows.filter((f) => f.direction === "outbound");
+      if (assetId && outboundFlows.length > 0) {
+        const unknownAssetFlow = outboundFlows.find((f) => f.asset_id !== assetId);
+        if (unknownAssetFlow) {
+          return {
+            outcome: "deny",
+            details: `SpendingLimit: outbound flow to unknown asset ${unknownAssetFlow.asset_id} (allowed: ${assetId})`,
+          };
+        }
+      }
+
+      const totalOut = outboundFlows
         .filter((f) => !assetId || f.asset_id === assetId)
         .reduce((sum, f) => sum + BigInt(f.amount_raw), 0n);
       if (totalOut > cap) {
