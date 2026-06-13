@@ -54,3 +54,10 @@ yarn-error.log*
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Temp / reference files ────────────────────────────────────────────────────
+_tmp/
+_commit.ps1
+_build_output.txt
+*.txt
+!README.txt
