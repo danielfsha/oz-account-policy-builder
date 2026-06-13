@@ -88,7 +88,7 @@ impl Policy for SoroswapBoundedSwapPolicy {
             .unwrap_or_else(|| panic!("SoroswapBoundedSwapPolicy: not installed"));
 
         // Only evaluate on swap calls
-        let (amount_in, amount_out_min) = match extract_swap_args(&context) {
+        let (amount_in, amount_out_min) = match extract_swap_args(e, &context) {
             Some(args) => args,
             None => return, // non-swap context — pass through
         };
@@ -181,7 +181,7 @@ impl Policy for SoroswapBoundedSwapPolicy {
         e.storage().persistent().remove(&state_key);
 
         e.events().publish(
-            (symbol_short!("uninstalled"),),
+            (soroban_sdk::Symbol::new(e, "uninstalled"),),
             (smart_account, context_rule.id),
         );
     }
@@ -195,23 +195,15 @@ impl SoroswapBoundedSwapPolicy {}
 /// Extract `(amount_in, amount_out_min)` from a Soroswap
 /// `swap_exact_tokens_for_tokens` call context, or `None` if the context
 /// is not a matching function call.
-fn extract_swap_args(context: &Context) -> Option<(i128, i128)> {
-    let fn_swap = soroban_sdk::Symbol::new(
-        // Symbol::new is available in no_std via the SDK
-        &soroban_sdk::Env::default(), // NOTE: only safe at compile-time for symbol literals
-        "swap_exact_tokens_for_tokens",
-    );
-    // We use a byte-level comparison approach instead to stay no_std safe
+fn extract_swap_args(e: &Env, context: &Context) -> Option<(i128, i128)> {
     match context {
         Context::Contract(ctx) => {
-            // Soroswap function: swap_exact_tokens_for_tokens
-            // We match on the symbol name bytes
-            let fn_name_str = ctx.fn_name.to_string();
-            if fn_name_str != "swap_exact_tokens_for_tokens" {
+            let fn_swap = soroban_sdk::Symbol::new(e, "swap_exact_tokens_for_tokens");
+            if ctx.fn_name != fn_swap {
                 return None;
             }
-            let amount_in: i128 = ctx.args.get(0).and_then(|v| i128::try_from(v).ok())?;
-            let amount_out_min: i128 = ctx.args.get(1).and_then(|v| i128::try_from(v).ok())?;
+            let amount_in: i128 = ctx.args.get(0).and_then(|v| v.try_into_val(e).ok())?;
+            let amount_out_min: i128 = ctx.args.get(1).and_then(|v| v.try_into_val(e).ok())?;
             Some((amount_in, amount_out_min))
         }
         _ => None,

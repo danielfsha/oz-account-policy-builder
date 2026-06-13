@@ -83,7 +83,7 @@ impl Policy for Sep41SubscriptionPolicy {
             .unwrap_or_else(|| panic!("Sep41SubscriptionPolicy: not installed"));
 
         // Only apply to transfer calls
-        let (to, amount) = match extract_transfer_args(&context) {
+        let (to, amount) = match extract_transfer_args(e, &context) {
             Some(v) => v,
             None => return,
         };
@@ -180,7 +180,7 @@ impl Policy for Sep41SubscriptionPolicy {
         e.storage().persistent().remove(&state_key);
 
         e.events().publish(
-            (symbol_short!("uninstalled"),),
+            (soroban_sdk::Symbol::new(e, "uninstalled"),),
             (smart_account, context_rule.id),
         );
     }
@@ -212,11 +212,11 @@ impl Sep41SubscriptionPolicy {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Extract `(to, amount)` from a SEP-41 `transfer(from, to, amount)` context.
-fn extract_transfer_args(context: &Context) -> Option<(Address, i128)> {
+fn extract_transfer_args(e: &Env, context: &Context) -> Option<(Address, i128)> {
     match context {
         Context::Contract(ctx) if ctx.fn_name == symbol_short!("transfer") => {
-            let to: Address = ctx.args.get(1).and_then(|v| Address::try_from(v).ok())?;
-            let amount: i128 = ctx.args.get(2).and_then(|v| i128::try_from(v).ok())?;
+            let to: Address = ctx.args.get(1).and_then(|v| v.try_into_val(e).ok())?;
+            let amount: i128 = ctx.args.get(2).and_then(|v| v.try_into_val(e).ok())?;
             Some((to, amount))
         }
         _ => None,

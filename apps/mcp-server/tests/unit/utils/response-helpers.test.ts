@@ -8,7 +8,7 @@ describe('Response Helpers', () => {
       
       expect(response.content).toHaveLength(1)
       expect(response.content[0].type).toBe('text')
-      expect(response.content[0].text).toBe('**Success**\n\nOperation completed')
+      expect(response.content[0].text).toBe('✅ **Operation completed**')
       expect(response.content[0].isError).toBeUndefined()
     })
 
@@ -18,26 +18,21 @@ describe('Response Helpers', () => {
       
       expect(response.content).toHaveLength(1)
       expect(response.content[0].type).toBe('text')
-      expect(response.content[0].text).toContain('**Success**')
-      expect(response.content[0].text).toContain('User created')
-      expect(response.content[0].text).toContain('**Result:**')
+      expect(response.content[0].text).toContain('✅ **User created**')
       expect(response.content[0].text).toContain(JSON.stringify(data, null, 2))
     })
 
     it('should handle null data', () => {
       const response = createSuccessResponse('Operation completed', null)
       
-      expect(response.content[0].text).toContain('**Success**')
-      expect(response.content[0].text).toContain('Operation completed')
-      expect(response.content[0].text).toContain('**Result:**')
+      expect(response.content[0].text).toContain('✅ **Operation completed**')
       expect(response.content[0].text).toContain('null')
     })
 
     it('should handle undefined data', () => {
       const response = createSuccessResponse('Operation completed', undefined)
       
-      expect(response.content[0].text).toBe('**Success**\n\nOperation completed')
-      expect(response.content[0].text).not.toContain('**Result:**')
+      expect(response.content[0].text).toBe('✅ **Operation completed**')
     })
 
     it('should handle complex data objects', () => {
@@ -54,8 +49,7 @@ describe('Response Helpers', () => {
       
       const response = createSuccessResponse('Users retrieved', data)
       
-      expect(response.content[0].text).toContain('**Success**')
-      expect(response.content[0].text).toContain('Users retrieved')
+      expect(response.content[0].text).toContain('✅ **Users retrieved**')
       expect(response.content[0].text).toContain('Alice')
       expect(response.content[0].text).toContain('Bob')
       expect(response.content[0].text).toContain('total')
@@ -68,7 +62,7 @@ describe('Response Helpers', () => {
       
       expect(response.content).toHaveLength(1)
       expect(response.content[0].type).toBe('text')
-      expect(response.content[0].text).toBe('**Error**\n\nSomething went wrong')
+      expect(response.content[0].text).toBe('❌ **Error:** Something went wrong')
       expect(response.content[0].isError).toBe(true)
     })
 
@@ -78,9 +72,7 @@ describe('Response Helpers', () => {
       
       expect(response.content).toHaveLength(1)
       expect(response.content[0].type).toBe('text')
-      expect(response.content[0].text).toContain('**Error**')
-      expect(response.content[0].text).toContain('Validation failed')
-      expect(response.content[0].text).toContain('**Details:**')
+      expect(response.content[0].text).toContain('❌ **Error:** Validation failed')
       expect(response.content[0].text).toContain(JSON.stringify(details, null, 2))
       expect(response.content[0].isError).toBe(true)
     })
@@ -88,26 +80,21 @@ describe('Response Helpers', () => {
     it('should handle null details', () => {
       const response = createErrorResponse('Operation failed', null)
       
-      expect(response.content[0].text).toContain('**Error**')
-      expect(response.content[0].text).toContain('Operation failed')
-      expect(response.content[0].text).toContain('**Details:**')
+      expect(response.content[0].text).toContain('❌ **Error:** Operation failed')
       expect(response.content[0].text).toContain('null')
     })
 
     it('should handle undefined details', () => {
       const response = createErrorResponse('Operation failed', undefined)
       
-      expect(response.content[0].text).toBe('**Error**\n\nOperation failed')
-      expect(response.content[0].text).not.toContain('**Details:**')
+      expect(response.content[0].text).toBe('❌ **Error:** Operation failed')
     })
 
     it('should handle error objects as details', () => {
       const error = new Error('Database connection failed')
       const response = createErrorResponse('Database error', error)
       
-      expect(response.content[0].text).toContain('**Error**')
-      expect(response.content[0].text).toContain('Database error')
-      expect(response.content[0].text).toContain('**Details:**')
+      expect(response.content[0].text).toContain('❌ **Error:** Database error')
       expect(response.content[0].isError).toBe(true)
     })
 

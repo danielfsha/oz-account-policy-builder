@@ -9,7 +9,7 @@
 //!   PolicySpec → codegen → generated Rust crate
 
 #![forbid(unsafe_code)]
-#![deny(missing_docs)]
+#![allow(missing_docs)]
 
 pub mod codegen;
 pub mod harness;

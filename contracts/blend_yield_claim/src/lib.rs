@@ -16,7 +16,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    auth::Context, contract, contractimpl, contracttype, symbol_short, Address, Env, Val, Vec,
+    auth::Context, contract, contractimpl, contracttype, symbol_short, Address, Env, Val, Vec, TryIntoVal,
 };
 use stellar_accounts::{
     policies::Policy,
@@ -93,7 +93,7 @@ impl Policy for BlendYieldClaimPolicy {
             state.window_start_ledger = cur;
         }
 
-        let amount = sac_transfer_amount(&context);
+        let amount = sac_transfer_amount(e, &context);
         if amount > 0 {
             state.spent = state.spent.saturating_add(amount);
             if state.spent > params.spending_limit {
@@ -154,7 +154,7 @@ impl Policy for BlendYieldClaimPolicy {
         e.storage().persistent().remove(&state_key);
 
         e.events().publish(
-            (symbol_short!("uninstalled"),),
+            (soroban_sdk::Symbol::new(e, "uninstalled"),),
             (smart_account, context_rule.id),
         );
     }
@@ -167,12 +167,12 @@ impl BlendYieldClaimPolicy {}
 
 /// Extract the amount from a SAC `transfer(from, to, amount: i128)` call.
 /// Returns 0 for any other context type or function name.
-fn sac_transfer_amount(context: &Context) -> i128 {
+fn sac_transfer_amount(e: &Env, context: &Context) -> i128 {
     match context {
         Context::Contract(ctx) if ctx.fn_name == symbol_short!("transfer") => ctx
             .args
             .get(2)
-            .and_then(|v| i128::try_from(v).ok())
+            .and_then(|v| v.try_into_val(e).ok())
             .unwrap_or(0),
         _ => 0,
     }
